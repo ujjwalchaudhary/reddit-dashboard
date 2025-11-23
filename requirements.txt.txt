@@ -1,0 +1,6 @@
+streamlit
+praw
+pandas
+openpyxl
+pyarrow
+altair
