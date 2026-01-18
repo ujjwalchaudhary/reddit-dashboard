@@ -45,7 +45,7 @@ reddit = praw.Reddit(
 # ---------- Helper functions ----------
 def fetch_posts_from_subreddit(sub_name: str, limit: int, keywords, start_date, end_date, min_score, min_comments):
     results = []
-   
+    try:
         subreddit = reddit.subreddit(sub_name)
             for post in subreddit.hot(limit=limit):
             created = datetime.fromtimestamp(post.created_utc, timezone.utc)
@@ -64,28 +64,7 @@ def fetch_posts_from_subreddit(sub_name: str, limit: int, keywords, start_date, 
                 continue
 
 
-            def analyze_post_text(text: str) -> dict:
-                text = (text or "").lower()
-
-    def has_keywords(words):
-        return int(any(w in text for w in words))
-
-    pain = has_keywords(KEYWORD_BUCKETS["pain"])
-    demand = has_keywords(KEYWORD_BUCKETS["demand"])
-    cost = has_keywords(KEYWORD_BUCKETS["cost"])
-    confusion = has_keywords(KEYWORD_BUCKETS["confusion"])
-    sentiment = has_keywords(KEYWORD_BUCKETS["sentiment"])
-
-    insight_priority = (pain * 2) + (demand * 2) + cost + confusion + sentiment
-
-    return {
-        "Pain_Flag": pain,
-        "Demand_Flag": demand,
-        "Cost_Flag": cost,
-        "Confusion_Flag": confusion,
-        "Sentiment_Flag": sentiment,
-        "Insight_Priority": insight_priority
-    } 
+           
 
             # top comments (optional short preview)
             comments_preview = ""
@@ -117,6 +96,29 @@ results.append({
     except Exception as e:
         st.warning(f"⚠️ Skipping r/{sub_name}: {e}")
     return results
+
+def analyze_post_text(text: str) -> dict:
+                text = (text or "").lower()
+
+    def has_keywords(words):
+        return int(any(w in text for w in words))
+
+    pain = has_keywords(KEYWORD_BUCKETS["pain"])
+    demand = has_keywords(KEYWORD_BUCKETS["demand"])
+    cost = has_keywords(KEYWORD_BUCKETS["cost"])
+    confusion = has_keywords(KEYWORD_BUCKETS["confusion"])
+    sentiment = has_keywords(KEYWORD_BUCKETS["sentiment"])
+
+    insight_priority = (pain * 2) + (demand * 2) + cost + confusion + sentiment
+
+    return {
+        "Pain_Flag": pain,
+        "Demand_Flag": demand,
+        "Cost_Flag": cost,
+        "Confusion_Flag": confusion,
+        "Sentiment_Flag": sentiment,
+        "Insight_Priority": insight_priority
+    }
 
 def df_to_excel_bytes(df: pd.DataFrame) -> bytes:
     buf = io.BytesIO()
@@ -307,6 +309,7 @@ with tabs[3]:
 
 st.markdown("---")
 st.caption("Built with ❤️ — you can ask me to add authentication, deployment, or team sharing next.")
+
 
 
 
