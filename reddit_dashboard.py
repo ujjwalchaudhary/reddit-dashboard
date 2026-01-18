@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 # =========================================================
-# REDDIT CONFIG (HARDCODED AS REQUESTED)
+# REDDIT CONFIG (EXPLICIT – AS REQUESTED)
 # =========================================================
 CLIENT_ID = "Zw79U9P5jvyND91YLfFlNw"
 CLIENT_SECRET = "da_Z-jcrvfUDTojeU82JhZTPynWFYQ"
@@ -27,12 +27,12 @@ reddit = praw.Reddit(
 )
 
 # =========================================================
-# SIDEBAR CONTROLS (RESTORED ✅)
+# SIDEBAR CONTROLS
 # =========================================================
 st.sidebar.header("🔧 Controls")
 
 subreddit_input = st.sidebar.text_input(
-    "Enter subreddits (comma-separated)",
+    "Enter Subreddits (comma-separated)",
     value="Rag"
 )
 
@@ -74,26 +74,19 @@ KEYWORD_BUCKETS = {
 # =========================================================
 # HELPERS
 # =========================================================
-def has_keywords(text: str, keywords: list) -> int:
-    if not text:
-        return 0
-    text = text.lower()
-    return int(any(k in text for k in keywords))
+def has_keywords(words, text):
+    return int(any(w in text for w in words))
 
-def analyze_post(text: str) -> dict:
-    pain = has_keywords(text, KEYWORD_BUCKETS["pain"])
-    demand = has_keywords(text, KEYWORD_BUCKETS["demand"])
-    cost = has_keywords(text, KEYWORD_BUCKETS["cost"])
-    confusion = has_keywords(text, KEYWORD_BUCKETS["confusion"])
-    sentiment = has_keywords(text, KEYWORD_BUCKETS["sentiment"])
+def analyze_text(text: str) -> dict:
+    text = (text or "").lower()
 
-    insight_priority = (
-        pain * 2 +
-        demand * 2 +
-        cost +
-        confusion +
-        sentiment
-    )
+    pain = has_keywords(KEYWORD_BUCKETS["pain"], text)
+    demand = has_keywords(KEYWORD_BUCKETS["demand"], text)
+    cost = has_keywords(KEYWORD_BUCKETS["cost"], text)
+    confusion = has_keywords(KEYWORD_BUCKETS["confusion"], text)
+    sentiment = has_keywords(KEYWORD_BUCKETS["sentiment"], text)
+
+    insight_priority = (pain * 2) + (demand * 2) + cost + confusion + sentiment
 
     return {
         "Pain_Flag": pain,
@@ -112,56 +105,56 @@ def fetch_posts(subreddits, limit):
     rows = []
 
     for sub in subreddits:
-        subreddit = reddit.subreddit(sub)
-        for post in subreddit.hot(limit=limit):
-            text = f"{post.title or ''} {post.selftext or ''}"
-            analysis = analyze_post(text)
+        try:
+            subreddit = reddit.subreddit(sub)
+            for post in subreddit.hot(limit=limit):
+                analysis = analyze_text(
+                    f"{post.title} {post.selftext}"
+                )
 
-            rows.append({
-                "Subreddit": sub,
-                "Title": post.title,
-                "Body": post.selftext,
-                "Score": post.score,
-                "Comments": post.num_comments,
-                "Created_UTC": datetime.fromtimestamp(
-                    post.created_utc, tz=timezone.utc
-                ),
-                **analysis
-            })
+                rows.append({
+                    "Subreddit": sub,
+                    "Title": post.title,
+                    "Body": post.selftext,
+                    "Score": post.score,
+                    "Comments": post.num_comments,
+                    "Created_UTC": datetime.fromtimestamp(
+                        post.created_utc, tz=timezone.utc
+                    ),
+                    **analysis
+                })
+        except Exception as e:
+            st.warning(f"Skipping r/{sub}: {e}")
 
     return pd.DataFrame(rows)
 
 # =========================================================
-# MAIN APP
+# LOAD DATA
 # =========================================================
-st.title("📊 Reddit Intelligence Dashboard")
-
-if not SUBREDDITS:
-    st.warning("Please enter at least one subreddit.")
-    st.stop()
-
-with st.spinner("Fetching and analyzing Reddit posts..."):
-    df = fetch_posts(SUBREDDITS, POST_LIMIT)
+df = fetch_posts(SUBREDDITS, POST_LIMIT)
 
 if df.empty:
-    st.warning("No posts found.")
+    st.error("No posts fetched.")
     st.stop()
 
 st.success(f"Fetched {len(df)} posts")
 
 # =========================================================
-# TABS
+# TABS (FIXED)
 # =========================================================
-tab_posts, tab_insights, tab_analytics = st.tabs(
-    ["Posts", "Insights", "Analytics"]
+tab_posts, tab_insights, tab_weekly, tab_analytics = st.tabs(
+    ["Posts", "Insights", "Weekly Trends", "Analytics"]
 )
 
 # =========================================================
 # POSTS TAB
 # =========================================================
 with tab_posts:
-    st.subheader("All Posts")
-    st.dataframe(df, use_container_width=True)
+    st.subheader("📄 All Posts")
+    st.dataframe(
+        df[["Subreddit", "Title", "Body", "Score", "Comments"]],
+        use_container_width=True
+    )
 
 # =========================================================
 # INSIGHTS TAB
@@ -169,23 +162,23 @@ with tab_posts:
 with tab_insights:
     st.subheader("🔥 Top Insight Posts")
 
-    top_df = df.sort_values(
+    top_insights = df.sort_values(
         "Insight_Priority", ascending=False
-    ).head(15)
+    ).head(10)
 
     st.dataframe(
-        top_df[
-            ["Subreddit", "Title", "Body",
-             "Pain_Flag", "Demand_Flag",
-             "Cost_Flag", "Confusion_Flag",
-             "Insight_Priority"]
+        top_insights[
+            ["Subreddit", "Title", "Pain_Flag",
+             "Demand_Flag", "Cost_Flag",
+             "Confusion_Flag", "Insight_Priority"]
         ],
         use_container_width=True
     )
 
-    # -------------------------------
-    # WEEKLY TRENDS (OPTION B + C)
-    # -------------------------------
+# =========================================================
+# WEEKLY TRENDS TAB (FIXED & SEPARATE)
+# =========================================================
+with tab_weekly:
     st.subheader("📈 Weekly Trends")
 
     df["Week"] = df["Created_UTC"].dt.strftime("%Y-W%U")
@@ -207,7 +200,7 @@ with tab_insights:
 with tab_analytics:
     st.subheader("🌍 Cross-Community Comparison")
 
-    community = df.groupby("Subreddit").agg(
+    analytics = df.groupby("Subreddit").agg(
         Total_Posts=("Title", "count"),
         Pain_Rate=("Pain_Flag", "mean"),
         Demand_Rate=("Demand_Flag", "mean"),
@@ -216,26 +209,23 @@ with tab_analytics:
         Avg_Insight_Priority=("Insight_Priority", "mean")
     ).reset_index()
 
-    st.dataframe(community, use_container_width=True)
+    st.dataframe(analytics, use_container_width=True)
 
 # =========================================================
-# EXPORT (SAFE EXCEL)
+# EXPORT
 # =========================================================
 st.subheader("⬇️ Export Data")
 
 export_df = df.copy()
-
-# Make Excel-safe (critical fix)
-for col in export_df.columns:
-    export_df[col] = export_df[col].astype(str)
+export_df["Created_UTC"] = export_df["Created_UTC"].astype(str)
 
 buffer = io.BytesIO()
 export_df.to_excel(buffer, index=False)
 buffer.seek(0)
 
 st.download_button(
-    label="Download Excel",
-    data=buffer,
+    "Download Excel",
+    buffer,
     file_name="reddit_intelligence_export.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
