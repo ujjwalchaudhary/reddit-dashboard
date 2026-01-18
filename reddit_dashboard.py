@@ -6,6 +6,30 @@ from datetime import datetime, timezone
 import altair as alt
 import io
 
+# ---------- Keyword Buckets ----------
+KEYWORD_BUCKETS = {
+    "pain": [
+        "problem", "issue", "stuck", "failing", "broken",
+        "doesn't work", "error", "limitation", "hard to"
+    ],
+    "demand": [
+        "need", "looking for", "recommend", "any alternative",
+        "best way", "solution", "how do i"
+    ],
+    "cost": [
+        "price", "cost", "expensive", "cheap",
+        "billing", "roi", "worth it"
+    ],
+    "confusion": [
+        "confused", "unsure", "which one", "vs",
+        "difference", "compare"
+    ],
+    "sentiment": [
+        "frustrated", "disappointed", "love",
+        "hate", "terrible", "amazing"
+    ]
+} 
+
 # --- Configure your Reddit credentials here ---
 CLIENT_ID = "Zw79U9P5jvyND91YLfFlNw"
 CLIENT_SECRET = "da_Z-jcrvfUDTojeU82JhZTPynWFYQ"
@@ -39,6 +63,30 @@ def fetch_posts_from_subreddit(sub_name: str, limit: int, keywords, start_date, 
             if post.score < min_score or post.num_comments < min_comments:
                 continue
 
+
+            def analyze_post_text(text: str) -> dict:
+    text = (text or "").lower()
+
+    def has_keywords(words):
+        return int(any(w in text for w in words))
+
+    pain = has_keywords(KEYWORD_BUCKETS["pain"])
+    demand = has_keywords(KEYWORD_BUCKETS["demand"])
+    cost = has_keywords(KEYWORD_BUCKETS["cost"])
+    confusion = has_keywords(KEYWORD_BUCKETS["confusion"])
+    sentiment = has_keywords(KEYWORD_BUCKETS["sentiment"])
+
+    insight_priority = (pain * 2) + (demand * 2) + cost + confusion + sentiment
+
+    return {
+        "Pain_Flag": pain,
+        "Demand_Flag": demand,
+        "Cost_Flag": cost,
+        "Confusion_Flag": confusion,
+        "Sentiment_Flag": sentiment,
+        "Insight_Priority": insight_priority
+    } 
+
             # top comments (optional short preview)
             comments_preview = ""
             try:
@@ -48,17 +96,24 @@ def fetch_posts_from_subreddit(sub_name: str, limit: int, keywords, start_date, 
             except Exception:
                 comments_preview = ""
 
-            results.append({
-                "Subreddit": sub_name,
-                "Title": post.title or "",
-                "Body": post.selftext or "",
-                "Author": str(post.author),
-                "Score": post.score,
-                "CommentsCount": post.num_comments,
-                "TopComments": comments_preview,
-                "Created_UTC": created.strftime("%Y-%m-%d %H:%M:%S"),
-                "URL": f"https://reddit.com{post.permalink}"
-            })
+            full_text = f"{post.title or ''} {post.selftext or ''}"
+analysis = analyze_post_text(full_text)
+
+results.append({
+    "Subreddit": sub_name,
+    "Title": post.title or "",
+    "Body": post.selftext or "",
+    "Author": str(post.author),
+    "Score": post.score,
+    "CommentsCount": post.num_comments,
+    "TopComments": comments_preview,
+    "Created_UTC": created.strftime("%Y-%m-%d %H:%M:%S"),
+    "URL": f"https://reddit.com{post.permalink}",
+
+    # 🔥 Analysis columns
+    **analysis
+})
+
     except Exception as e:
         st.warning(f"⚠️ Skipping r/{sub_name}: {e}")
     return results
@@ -211,6 +266,19 @@ with tabs[2]:
         ).properties(width=700, height=300, title="Posts over time (daily)")
         st.altair_chart(line, use_container_width=True)
 
+        st.subheader("🔥 High Priority Insight Posts")
+
+top_insights = posts_df.sort_values(
+    "Insight_Priority", ascending=False
+).head(10)
+
+st.dataframe(
+    top_insights[
+        ["Subreddit", "Title", "Insight_Priority",
+         "Pain_Flag", "Demand_Flag", "Cost_Flag"]
+    ]
+) 
+
         # Keyword frequency (simple)
         if keywords:
             kw_counts = {}
@@ -239,3 +307,4 @@ with tabs[3]:
 
 st.markdown("---")
 st.caption("Built with ❤️ — you can ask me to add authentication, deployment, or team sharing next.")
+
