@@ -9,9 +9,9 @@ import io
 # -------------------------------
 st.set_page_config(page_title="Reddit Intelligence Dashboard", layout="wide")
 
-REDDIT_CLIENT_ID = st.secrets["REDDIT_CLIENT_ID"]
-REDDIT_CLIENT_SECRET = st.secrets["REDDIT_CLIENT_SECRET"]
-REDDIT_USER_AGENT = "reddit-intelligence-dashboard"
+REDDIT_CLIENT_ID = st.secrets["Zw79U9P5jvyND91YLfFlNw"]
+REDDIT_CLIENT_SECRET = st.secrets["da_Z-jcrvfUDTojeU82JhZTPynWFYQ"]
+REDDIT_USER_AGENT = "Myfetchingscript/1.0 by u/ujjwaldrayaan"
 
 SUBREDDITS = ["Rag"]
 POST_LIMIT = 100
@@ -199,3 +199,4 @@ st.download_button(
     file_name="reddit_intelligence.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             )
+
