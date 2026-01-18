@@ -47,7 +47,7 @@ def fetch_posts_from_subreddit(sub_name: str, limit: int, keywords, start_date, 
     results = []
    
         subreddit = reddit.subreddit(sub_name)
-        for post in subreddit.hot(limit=limit):
+            for post in subreddit.hot(limit=limit):
             created = datetime.fromtimestamp(post.created_utc, timezone.utc)
             if start_date and created.date() < start_date:
                 continue
@@ -307,6 +307,7 @@ with tabs[3]:
 
 st.markdown("---")
 st.caption("Built with ❤️ — you can ask me to add authentication, deployment, or team sharing next.")
+
 
 
 
