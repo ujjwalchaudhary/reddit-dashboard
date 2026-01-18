@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 # =========================================================
-# REDDIT CONFIG (AS REQUESTED)
+# REDDIT CONFIG (HARDCODED AS REQUESTED)
 # =========================================================
 CLIENT_ID = "Zw79U9P5jvyND91YLfFlNw"
 CLIENT_SECRET = "da_Z-jcrvfUDTojeU82JhZTPynWFYQ"
@@ -27,10 +27,24 @@ reddit = praw.Reddit(
 )
 
 # =========================================================
-# APP CONFIG
+# SIDEBAR CONTROLS (RESTORED ✅)
 # =========================================================
-SUBREDDITS = ["Rag"]
-POST_LIMIT = 100
+st.sidebar.header("🔧 Controls")
+
+subreddit_input = st.sidebar.text_input(
+    "Enter subreddits (comma-separated)",
+    value="Rag"
+)
+
+POST_LIMIT = st.sidebar.slider(
+    "Posts per subreddit",
+    min_value=10,
+    max_value=300,
+    value=100,
+    step=10
+)
+
+SUBREDDITS = [s.strip() for s in subreddit_input.split(",") if s.strip()]
 
 # =========================================================
 # KEYWORD BUCKETS (LAYER 1)
@@ -54,25 +68,32 @@ KEYWORD_BUCKETS = {
     ],
     "sentiment": [
         "love", "great", "awesome", "hate", "bad", "terrible"
-    ],
+    ]
 }
 
 # =========================================================
-# ANALYSIS HELPERS
+# HELPERS
 # =========================================================
-def has_keywords(words, text):
-    return int(any(w in text for w in words))
+def has_keywords(text: str, keywords: list) -> int:
+    if not text:
+        return 0
+    text = text.lower()
+    return int(any(k in text for k in keywords))
 
-def analyze_post_text(text: str) -> dict:
-    text = (text or "").lower()
+def analyze_post(text: str) -> dict:
+    pain = has_keywords(text, KEYWORD_BUCKETS["pain"])
+    demand = has_keywords(text, KEYWORD_BUCKETS["demand"])
+    cost = has_keywords(text, KEYWORD_BUCKETS["cost"])
+    confusion = has_keywords(text, KEYWORD_BUCKETS["confusion"])
+    sentiment = has_keywords(text, KEYWORD_BUCKETS["sentiment"])
 
-    pain = has_keywords(KEYWORD_BUCKETS["pain"], text)
-    demand = has_keywords(KEYWORD_BUCKETS["demand"], text)
-    cost = has_keywords(KEYWORD_BUCKETS["cost"], text)
-    confusion = has_keywords(KEYWORD_BUCKETS["confusion"], text)
-    sentiment = has_keywords(KEYWORD_BUCKETS["sentiment"], text)
-
-    insight_priority = (pain * 2) + (demand * 2) + cost + confusion + sentiment
+    insight_priority = (
+        pain * 2 +
+        demand * 2 +
+        cost +
+        confusion +
+        sentiment
+    )
 
     return {
         "Pain_Flag": pain,
@@ -80,38 +101,21 @@ def analyze_post_text(text: str) -> dict:
         "Cost_Flag": cost,
         "Confusion_Flag": confusion,
         "Sentiment_Flag": sentiment,
-        "Insight_Priority": insight_priority,
+        "Insight_Priority": insight_priority
     }
 
 # =========================================================
-# EXCEL SAFETY (CRITICAL FIX)
-# =========================================================
-def prepare_df_for_excel(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-
-    # Remove timezone (Excel cannot handle tz-aware datetime)
-    for col in df.select_dtypes(include=["datetimetz", "datetime64[ns, UTC]"]).columns:
-        df[col] = df[col].dt.tz_localize(None)
-
-    # Truncate long text (Excel cell limit)
-    for col in ["Title", "Body"]:
-        if col in df.columns:
-            df[col] = df[col].astype(str).str.slice(0, 32000)
-
-    return df.fillna("")
-
-# =========================================================
-# FETCH REDDIT POSTS
+# FETCH POSTS
 # =========================================================
 @st.cache_data(show_spinner=False)
-def fetch_posts():
+def fetch_posts(subreddits, limit):
     rows = []
 
-    for sub in SUBREDDITS:
+    for sub in subreddits:
         subreddit = reddit.subreddit(sub)
-        for post in subreddit.hot(limit=POST_LIMIT):
-            full_text = f"{post.title} {post.selftext or ''}"
-            analysis = analyze_post_text(full_text)
+        for post in subreddit.hot(limit=limit):
+            text = f"{post.title or ''} {post.selftext or ''}"
+            analysis = analyze_post(text)
 
             rows.append({
                 "Subreddit": sub,
@@ -119,66 +123,119 @@ def fetch_posts():
                 "Body": post.selftext,
                 "Score": post.score,
                 "Comments": post.num_comments,
-                "Created_At": datetime.fromtimestamp(post.created_utc, timezone.utc),
+                "Created_UTC": datetime.fromtimestamp(
+                    post.created_utc, tz=timezone.utc
+                ),
                 **analysis
             })
 
     return pd.DataFrame(rows)
 
 # =========================================================
-# UI
+# MAIN APP
 # =========================================================
 st.title("📊 Reddit Intelligence Dashboard")
 
-df = fetch_posts()
+if not SUBREDDITS:
+    st.warning("Please enter at least one subreddit.")
+    st.stop()
+
+with st.spinner("Fetching and analyzing Reddit posts..."):
+    df = fetch_posts(SUBREDDITS, POST_LIMIT)
 
 if df.empty:
-    st.warning("No posts fetched.")
+    st.warning("No posts found.")
     st.stop()
 
 st.success(f"Fetched {len(df)} posts")
 
 # =========================================================
-# TOP INSIGHT POSTS
+# TABS
 # =========================================================
-st.subheader("🔥 Top Insight Posts")
-
-top_df = df.sort_values("Insight_Priority", ascending=False).head(10)
-st.dataframe(
-    top_df[["Subreddit", "Title", "Body"]],
-    use_container_width=True
+tab_posts, tab_insights, tab_analytics = st.tabs(
+    ["Posts", "Insights", "Analytics"]
 )
 
 # =========================================================
-# WEEKLY TRENDS (OPTION B + C)
+# POSTS TAB
 # =========================================================
-st.subheader("📈 Weekly Trends")
-
-df["Week"] = df["Created_At"].dt.strftime("%Y-W%U")
-
-weekly = df.groupby("Week").agg(
-    Total_Posts=("Title", "count"),
-    Pain_Count=("Pain_Flag", "sum"),
-    Demand_Count=("Demand_Flag", "sum"),
-    Cost_Count=("Cost_Flag", "sum"),
-    Confusion_Count=("Confusion_Flag", "sum"),
-    Avg_Insight_Priority=("Insight_Priority", "mean"),
-).reset_index()
-
-st.dataframe(weekly, use_container_width=True)
+with tab_posts:
+    st.subheader("All Posts")
+    st.dataframe(df, use_container_width=True)
 
 # =========================================================
-# EXPORT TO EXCEL (FIXED & SAFE)
+# INSIGHTS TAB
+# =========================================================
+with tab_insights:
+    st.subheader("🔥 Top Insight Posts")
+
+    top_df = df.sort_values(
+        "Insight_Priority", ascending=False
+    ).head(15)
+
+    st.dataframe(
+        top_df[
+            ["Subreddit", "Title", "Body",
+             "Pain_Flag", "Demand_Flag",
+             "Cost_Flag", "Confusion_Flag",
+             "Insight_Priority"]
+        ],
+        use_container_width=True
+    )
+
+    # -------------------------------
+    # WEEKLY TRENDS (OPTION B + C)
+    # -------------------------------
+    st.subheader("📈 Weekly Trends")
+
+    df["Week"] = df["Created_UTC"].dt.strftime("%Y-W%U")
+
+    weekly = df.groupby("Week").agg(
+        Total_Posts=("Title", "count"),
+        Pain_Count=("Pain_Flag", "sum"),
+        Demand_Count=("Demand_Flag", "sum"),
+        Cost_Count=("Cost_Flag", "sum"),
+        Confusion_Count=("Confusion_Flag", "sum"),
+        Avg_Insight_Priority=("Insight_Priority", "mean")
+    ).reset_index()
+
+    st.dataframe(weekly, use_container_width=True)
+
+# =========================================================
+# ANALYTICS TAB
+# =========================================================
+with tab_analytics:
+    st.subheader("🌍 Cross-Community Comparison")
+
+    community = df.groupby("Subreddit").agg(
+        Total_Posts=("Title", "count"),
+        Pain_Rate=("Pain_Flag", "mean"),
+        Demand_Rate=("Demand_Flag", "mean"),
+        Cost_Rate=("Cost_Flag", "mean"),
+        Confusion_Rate=("Confusion_Flag", "mean"),
+        Avg_Insight_Priority=("Insight_Priority", "mean")
+    ).reset_index()
+
+    st.dataframe(community, use_container_width=True)
+
+# =========================================================
+# EXPORT (SAFE EXCEL)
 # =========================================================
 st.subheader("⬇️ Export Data")
 
-safe_df = prepare_df_for_excel(df)
+export_df = df.copy()
+
+# Make Excel-safe (critical fix)
+for col in export_df.columns:
+    export_df[col] = export_df[col].astype(str)
+
 buffer = io.BytesIO()
-safe_df.to_excel(buffer, index=False, engine="openpyxl")
+export_df.to_excel(buffer, index=False)
+buffer.seek(0)
 
 st.download_button(
     label="Download Excel",
-    data=buffer.getvalue(),
-    file_name="reddit_intelligence.xlsx",
+    data=buffer,
+    file_name="reddit_intelligence_export.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+)
