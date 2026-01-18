@@ -45,7 +45,7 @@ reddit = praw.Reddit(
 # ---------- Helper functions ----------
 def fetch_posts_from_subreddit(sub_name: str, limit: int, keywords, start_date, end_date, min_score, min_comments):
     results = []
-    try:
+   
         subreddit = reddit.subreddit(sub_name)
         for post in subreddit.hot(limit=limit):
             created = datetime.fromtimestamp(post.created_utc, timezone.utc)
@@ -307,6 +307,7 @@ with tabs[3]:
 
 st.markdown("---")
 st.caption("Built with ❤️ — you can ask me to add authentication, deployment, or team sharing next.")
+
 
 
 
