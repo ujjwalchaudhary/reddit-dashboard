@@ -65,7 +65,7 @@ def fetch_posts_from_subreddit(sub_name: str, limit: int, keywords, start_date, 
 
 
             def analyze_post_text(text: str) -> dict:
-    text = (text or "").lower()
+                text = (text or "").lower()
 
     def has_keywords(words):
         return int(any(w in text for w in words))
@@ -307,6 +307,7 @@ with tabs[3]:
 
 st.markdown("---")
 st.caption("Built with ❤️ — you can ask me to add authentication, deployment, or team sharing next.")
+
 
 
 
