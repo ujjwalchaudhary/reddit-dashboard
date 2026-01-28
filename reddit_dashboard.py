@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 # =========================================================
-# REDDIT CONFIG (EXPLICIT – AS REQUESTED)
+# REDDIT CONFIG (HARDCODED – AS REQUESTED)
 # =========================================================
 CLIENT_ID = "Zw79U9P5jvyND91YLfFlNw"
 CLIENT_SECRET = "da_Z-jcrvfUDTojeU82JhZTPynWFYQ"
@@ -32,7 +32,7 @@ reddit = praw.Reddit(
 st.sidebar.header("🔧 Controls")
 
 subreddit_input = st.sidebar.text_input(
-    "Enter Subreddits (comma-separated)",
+    "Enter subreddits (comma-separated)",
     value="Rag"
 )
 
@@ -44,10 +44,16 @@ POST_LIMIT = st.sidebar.slider(
     step=10
 )
 
+keyword_input = st.sidebar.text_input(
+    "Filter posts by keywords (optional, comma-separated)",
+    value=""
+)
+
 SUBREDDITS = [s.strip() for s in subreddit_input.split(",") if s.strip()]
+KEYWORDS = [k.strip().lower() for k in keyword_input.split(",") if k.strip()]
 
 # =========================================================
-# KEYWORD BUCKETS (LAYER 1)
+# KEYWORD BUCKETS (ANALYSIS LAYER)
 # =========================================================
 KEYWORD_BUCKETS = {
     "pain": [
@@ -98,19 +104,25 @@ def analyze_text(text: str) -> dict:
     }
 
 # =========================================================
-# FETCH POSTS
+# FETCH POSTS (WITH KEYWORD PRE-FILTER RESTORED)
 # =========================================================
 @st.cache_data(show_spinner=False)
-def fetch_posts(subreddits, limit):
+def fetch_posts(subreddits, limit, keywords):
     rows = []
 
     for sub in subreddits:
         try:
             subreddit = reddit.subreddit(sub)
             for post in subreddit.hot(limit=limit):
-                analysis = analyze_text(
-                    f"{post.title} {post.selftext}"
-                )
+                text = f"{post.title or ''} {post.selftext or ''}"
+                text_lower = text.lower()
+
+                # 🔍 KEYWORD-BASED EXTRACTION (RESTORED FEATURE)
+                if keywords:
+                    if not any(k in text_lower for k in keywords):
+                        continue
+
+                analysis = analyze_text(text)
 
                 rows.append({
                     "Subreddit": sub,
@@ -131,16 +143,21 @@ def fetch_posts(subreddits, limit):
 # =========================================================
 # LOAD DATA
 # =========================================================
-df = fetch_posts(SUBREDDITS, POST_LIMIT)
+if not SUBREDDITS:
+    st.error("Please enter at least one subreddit.")
+    st.stop()
+
+with st.spinner("Fetching and analyzing Reddit posts..."):
+    df = fetch_posts(SUBREDDITS, POST_LIMIT, KEYWORDS)
 
 if df.empty:
-    st.error("No posts fetched.")
+    st.warning("No posts matched your criteria.")
     st.stop()
 
 st.success(f"Fetched {len(df)} posts")
 
 # =========================================================
-# TABS (FIXED)
+# TABS
 # =========================================================
 tab_posts, tab_insights, tab_weekly, tab_analytics = st.tabs(
     ["Posts", "Insights", "Weekly Trends", "Analytics"]
@@ -162,21 +179,22 @@ with tab_posts:
 with tab_insights:
     st.subheader("🔥 Top Insight Posts")
 
-    top_insights = df.sort_values(
+    top_df = df.sort_values(
         "Insight_Priority", ascending=False
     ).head(10)
 
     st.dataframe(
-        top_insights[
-            ["Subreddit", "Title", "Pain_Flag",
-             "Demand_Flag", "Cost_Flag",
-             "Confusion_Flag", "Insight_Priority"]
+        top_df[
+            ["Subreddit", "Title",
+             "Pain_Flag", "Demand_Flag",
+             "Cost_Flag", "Confusion_Flag",
+             "Insight_Priority"]
         ],
         use_container_width=True
     )
 
 # =========================================================
-# WEEKLY TRENDS TAB (FIXED & SEPARATE)
+# WEEKLY TRENDS TAB
 # =========================================================
 with tab_weekly:
     st.subheader("📈 Weekly Trends")
@@ -212,7 +230,7 @@ with tab_analytics:
     st.dataframe(analytics, use_container_width=True)
 
 # =========================================================
-# EXPORT
+# EXPORT (SAFE)
 # =========================================================
 st.subheader("⬇️ Export Data")
 
