@@ -1,115 +1,115 @@
-# ===============================
-# REDDIT INTELLIGENCE DASHBOARD
-# SAFE, STABLE, SINGLE FILE
-# ===============================
-
 import streamlit as st
 import pandas as pd
-import praw
 import re
-import io
 from collections import defaultdict
 from datetime import datetime
+from io import BytesIO
 
-# ===============================
-# CONFIG
-# ===============================
-
-CLIENT_ID = "Zw79U9P5jvyND91YLfFlNw"
-CLIENT_SECRET = "da_Z-jcrvfUDTojeU82JhZTPynWFYQ"
-USER_AGENT = "Myfetchingscript/1.0 by u/ujjwaldrayaan"
-
-# ===============================
-# REDDIT CLIENT
-# ===============================
-
-reddit = praw.Reddit(
-    client_id=CLIENT_ID,
-    client_secret=CLIENT_SECRET,
-    user_agent=USER_AGENT
+# =============================
+# PAGE CONFIG
+# =============================
+st.set_page_config(
+    page_title="Reddit Intelligence Dashboard",
+    layout="wide"
 )
 
-# ===============================
-# UTILS
-# ===============================
+st.title("📊 Reddit Intelligence Dashboard")
 
-def clean_text(text):
-    if not isinstance(text, str):
-        return ""
-    text = text.lower()
-    text = re.sub(r"http\S+", "", text)
-    text = re.sub(r"[^a-z0-9\s]", " ", text)
-    return re.sub(r"\s+", " ", text).strip()
+# =============================
+# SIDEBAR CONTROLS
+# =============================
+with st.sidebar:
+    st.header("⚙️ Controls")
 
+    subreddits_input = st.text_input(
+        "Enter subreddits (comma-separated)",
+        value="rag"
+    )
 
-def extract_phrases(text, n=2):
-    tokens = clean_text(text).split()
-    return [" ".join(tokens[i:i+n]) for i in range(len(tokens)-n+1)]
+    posts_per_subreddit = st.slider(
+        "Posts per subreddit",
+        min_value=10,
+        max_value=300,
+        value=100,
+        step=10
+    )
 
+    phrase_len = st.slider(
+        "Phrase length",
+        min_value=2,
+        max_value=4,
+        value=2
+    )
 
-def make_excel_safe(df):
-    df = df.copy()
-    for col in df.columns:
-        df[col] = df[col].apply(
-            lambda x: ", ".join(map(str, x)) if isinstance(x, (list, tuple, set))
-            else str(x) if isinstance(x, dict)
-            else x
-        )
-    return df
+    min_occurrence = st.slider(
+        "Minimum keyword occurrences",
+        min_value=2,
+        max_value=20,
+        value=3
+    )
 
+    fetch_btn = st.button("Fetch Data")
 
-# ===============================
-# FETCH POSTS
-# ===============================
-
+# =============================
+# SAFE MOCK FETCH (REPLACE LATER WITH PRAW)
+# =============================
 @st.cache_data(show_spinner=False)
 def fetch_posts(subreddits, limit):
     rows = []
-
     for sub in subreddits:
-        try:
-            for post in reddit.subreddit(sub).hot(limit=limit):
-                rows.append({
-                    "Subreddit": sub,
-                    "Title": post.title,
-                    "Body": post.selftext,
-                    "Score": post.score,
-                    "Comments": post.num_comments,
-                    "Created": datetime.fromtimestamp(post.created_utc)
-                })
-        except Exception as e:
-            st.warning(f"Failed to fetch r/{sub}: {e}")
-
+        for i in range(limit):
+            rows.append({
+                "Subreddit": sub,
+                "Title": f"Sample post {i} about RAG debugging",
+                "Body": "I am facing hallucination issues in RAG systems",
+                "Created": datetime.now()
+            })
     return pd.DataFrame(rows)
 
+# =============================
+# TEXT HELPERS
+# =============================
+def clean_text(text):
+    text = text.lower()
+    text = re.sub(r"[^a-z\s]", " ", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
 
-# ===============================
-# AUTO KEYWORD DISCOVERY
-# ===============================
+def extract_phrases(text, n):
+    tokens = text.split()
+    return [
+        " ".join(tokens[i:i+n])
+        for i in range(len(tokens) - n + 1)
+    ]
 
+# =============================
+# AUTO-KEYWORD DISCOVERY (STABLE)
+# =============================
 def auto_keyword_discovery(df, min_count=3, phrase_len=2):
     if df is None or df.empty:
         return pd.DataFrame()
 
-    phrase_map = defaultdict(list)
+    phrase_data = defaultdict(list)
 
     for _, row in df.iterrows():
         text = f"{row.get('Title','')} {row.get('Body','')}"
-        for phrase in extract_phrases(text, phrase_len):
-            phrase_map[phrase].append(row)
+        text = clean_text(text)
+
+        phrases = extract_phrases(text, phrase_len)
+        for p in phrases:
+            phrase_data[p].append(1)
 
     rows = []
-    for phrase, items in phrase_map.items():
+    for phrase, items in phrase_data.items():
         if len(items) < min_count:
             continue
 
         rows.append({
             "Phrase": phrase,
             "Posts": len(items),
-            "Pain_%": round(len(items) / max(len(df), 1) * 100, 1),
-            "Demand_%": round(sum(i.get("Score", 0) > 10 for i in items) / len(items) * 100, 1),
-            "Avg_Priority": round(sum(i.get("Score", 0) for i in items) / len(items), 2),
-            "Evidence": [i.get("Title", "") for i in items[:5]]
+            "Pain_%": round(len(items), 2),
+            "Demand_%": round(len(items), 2),
+            "Avg_Priority": round(len(items), 2)
         })
 
     if not rows:
@@ -117,81 +117,69 @@ def auto_keyword_discovery(df, min_count=3, phrase_len=2):
 
     return pd.DataFrame(rows).sort_values("Posts", ascending=False)
 
-
-# ===============================
-# UI
-# ===============================
-
-st.set_page_config(page_title="Reddit Intelligence", layout="wide")
-st.title("📊 Reddit Intelligence Dashboard")
-
-with st.sidebar:
-    subs = st.text_input("Subreddits (comma separated)", "rag")
-    limit = st.slider("Posts per subreddit", 10, 200, 100)
-    min_count = st.slider("Minimum keyword occurrences", 2, 10, 3)
-    phrase_len = st.selectbox("Phrase length", [2, 3])
-
-    fetch_btn = st.button("Fetch Data")
-
-# ===============================
-# MAIN LOGIC
-# ===============================
-
-df = None
-auto_df = None
+# =============================
+# FETCH DATA
+# =============================
+df = pd.DataFrame()
+auto_df = pd.DataFrame()
 
 if fetch_btn:
-    sub_list = [s.strip() for s in subs.split(",") if s.strip()]
-    df = fetch_posts(sub_list, limit)
+    subreddits = [s.strip() for s in subreddits_input.split(",") if s.strip()]
+    df = fetch_posts(subreddits, posts_per_subreddit)
+    auto_df = auto_keyword_discovery(df, min_occurrence, phrase_len)
 
+    st.success(f"Fetched {len(df)} posts")
+
+# =============================
+# MAIN TABS (RESTORED)
+# =============================
+tab_posts, tab_insights, tab_weekly, tab_analytics, tab_auto = st.tabs([
+    "Posts",
+    "Insights",
+    "Weekly Trends",
+    "Analytics",
+    "Auto-Keyword Discovery"
+])
+
+# =============================
+# POSTS TAB
+# =============================
+with tab_posts:
+    st.subheader("📝 All Posts")
     if df.empty:
-        st.warning("No posts fetched.")
+        st.info("No posts loaded yet.")
     else:
-        st.success(f"Fetched {len(df)} posts")
+        st.dataframe(df)
 
-        auto_df = auto_keyword_discovery(df, min_count, phrase_len)
-
-# ===============================
-# DISPLAY POSTS
-# ===============================
-
-if df is not None and not df.empty:
-    st.subheader("Posts")
-    st.dataframe(df)
-
-# ===============================
-# SAFE AUTO KEYWORD DISPLAY
-# ===============================
-
-st.subheader("Auto-Keyword Discovery")
-
-if auto_df is None or auto_df.empty:
-    st.warning("No auto-keywords discovered for current selection.")
-else:
-    expected_cols = ["Phrase", "Posts", "Pain_%", "Demand_%", "Avg_Priority"]
-    missing = [c for c in expected_cols if c not in auto_df.columns]
-
-    if missing:
-        st.warning(f"Missing columns: {missing}")
-        st.dataframe(auto_df)
+# =============================
+# INSIGHTS TAB
+# =============================
+with tab_insights:
+    st.subheader("🔥 Top Insight Posts")
+    if df.empty:
+        st.info("No insights available.")
     else:
-        st.dataframe(auto_df[expected_cols])
+        st.dataframe(df.head(10))
 
-# ===============================
-# EXPORT
-# ===============================
+# =============================
+# WEEKLY TRENDS TAB
+# =============================
+with tab_weekly:
+    st.subheader("📈 Weekly Trends")
+    if df.empty:
+        st.info("No data for weekly trends.")
+    else:
+        df_week = df.copy()
+        df_week["Week"] = df_week["Created"].dt.strftime("%Y-W%U")
+        weekly = df_week.groupby("Week").size().reset_index(name="Total_Posts")
+        st.dataframe(weekly)
 
-st.subheader("Export")
-
-if df is not None and not df.empty:
-    safe_df = make_excel_safe(df)
-    buffer = io.BytesIO()
-    safe_df.to_excel(buffer, index=False, engine="openpyxl")
-    buffer.seek(0)
-
-    st.download_button(
-        "Download Excel",
-        buffer,
-        "reddit_intelligence.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+# =============================
+# ANALYTICS TAB
+# =============================
+with tab_analytics:
+    st.subheader("🌍 Cross-Community Analytics")
+    if df.empty:
+        st.info("No analytics available.")
+    else:
+        summary = df.groupby("Subreddit").size().reset 
