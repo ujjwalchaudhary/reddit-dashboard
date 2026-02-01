@@ -151,10 +151,10 @@ def auto_keyword_discovery(df, min_count=3, phrase_lengths=(2, 3)):
 
 df = pd.DataFrame(rows)
 
-    if df.empty or "Posts" not in df.columns:
-        return pd.DataFrame(columns=["Keyword", "Posts"])
+if df.empty or "Posts" not in df.columns:
+    return pd.DataFrame(columns=["Keyword", "Posts"])
 
-    return df.sort_values("Posts", ascending=False)
+return df.sort_values("Posts", ascending=False)
 
 # =========================================================
 # FETCH POSTS (WITH KEYWORD PRE-FILTER RESTORED)
