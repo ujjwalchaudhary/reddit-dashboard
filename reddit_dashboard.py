@@ -148,7 +148,7 @@ def auto_keyword_discovery(df, min_count=3, phrase_lengths=(2, 3)):
         avg_priority = sum(i.get("Insight_Priority", 0) for i in items) / len(items)
 
         rows.append({
-            "Keyword": phrase,
+            "Phrase": phrase,
             "Posts": len(items),
             "Pain_%": round(pain_pct, 1),
             "Demand_%": round(demand_pct, 1),
@@ -161,10 +161,23 @@ def auto_keyword_discovery(df, min_count=3, phrase_lengths=(2, 3)):
 
     if df_out.empty or "Posts" not in df_out.columns:
         return pd.DataFrame(columns=[
-            "Keyword", "Posts", "Pain_%", "Demand_%", "Avg_Priority", "Evidence"
+            "Phrase", "Posts", "Pain_%", "Demand_%", "Avg_Priority", "Evidence"
         ])
 
     return df_out.sort_values("Posts", ascending=False)
+    
+    
+# -----------------------------
+# SAFE DISPLAY (NO KEYERROR)
+# -----------------------------
+expected_cols = ["Phrase", "Posts", "Pain_%", "Demand_%", "Avg_Priority"]
+
+missing = [c for c in expected_cols if c not in auto_df.columns]
+
+if missing:
+    st.warning(f"Auto-keyword data missing columns: {missing}")
+else:
+    st.dataframe(auto_df[expected_cols])
 
 # =========================================================
 # FETCH POSTS (WITH KEYWORD PRE-FILTER RESTORED)
