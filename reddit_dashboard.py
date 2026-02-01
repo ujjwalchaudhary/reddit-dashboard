@@ -123,38 +123,48 @@ def extract_phrases(text, n):
     return [" ".join(tokens[i:i+n]) for i in range(len(tokens) - n + 1)]
 
 def auto_keyword_discovery(df, min_count=3, phrase_lengths=(2, 3)):
-    phrase_data = defaultdict(list)
+    from collections import defaultdict
 
+    phrase_data = defaultdict(list)
+    rows = []
+
+    # -------- collect phrases ----------
     for _, row in df.iterrows():
-        text = f"{row['Title']} {row['Body']}"
+        text = f"{row.get('Title','')} {row.get('Body','')}".lower()
+
         for n in phrase_lengths:
-            for phrase in extract_phrases(text, n):
+            words = text.split()
+            for i in range(len(words) - n + 1):
+                phrase = " ".join(words[i:i+n])
                 phrase_data[phrase].append(row)
 
-    rows = []
+    # -------- analyze phrases ----------
     for phrase, items in phrase_data.items():
         if len(items) < min_count:
             continue
 
-        pain_pct = sum(i["Pain_Flag"] for i in items) / len(items) * 100
-        demand_pct = sum(i["Demand_Flag"] for i in items) / len(items) * 100
-        avg_priority = sum(i["Insight_Priority"] for i in items) / len(items)
+        pain_pct = sum(i.get("Pain_Flag", 0) for i in items) / len(items) * 100
+        demand_pct = sum(i.get("Demand_Flag", 0) for i in items) / len(items) * 100
+        avg_priority = sum(i.get("Insight_Priority", 0) for i in items) / len(items)
 
         rows.append({
-            "Phrase": phrase,
+            "Keyword": phrase,
             "Posts": len(items),
             "Pain_%": round(pain_pct, 1),
             "Demand_%": round(demand_pct, 1),
             "Avg_Priority": round(avg_priority, 2),
-            "Evidence": items[:5]  # keep few examples
+            "Evidence": [i.get("Title", "") for i in items[:5]]
         })
 
-df = pd.DataFrame(rows)
+    # -------- final dataframe ----------
+    df_out = pd.DataFrame(rows)
 
-if df.empty or "Posts" not in df.columns:
-        return pd.DataFrame(columns=["Keyword", "Posts"])
+    if df_out.empty or "Posts" not in df_out.columns:
+        return pd.DataFrame(columns=[
+            "Keyword", "Posts", "Pain_%", "Demand_%", "Avg_Priority", "Evidence"
+        ])
 
-return df.sort_values("Posts", ascending=False)
+    return df_out.sort_values("Posts", ascending=False)
 
 # =========================================================
 # FETCH POSTS (WITH KEYWORD PRE-FILTER RESTORED)
@@ -354,7 +364,6 @@ st.download_button(
     file_name="reddit_intelligence_export.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
-
 
 
 
