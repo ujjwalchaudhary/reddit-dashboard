@@ -123,23 +123,6 @@ def extract_phrases(text, n):
     return [" ".join(tokens[i:i+n]) for i in range(len(tokens) - n + 1)]
 
 def auto_keyword_discovery(df, min_count=3, phrase_lengths=(2, 3)):
-    
-# -----------------------------
-# SAFE AUTO-KEYWORD DISPLAY
-# -----------------------------
-if auto_df is None or auto_df.empty:
-    st.warning("No auto-keywords discovered for current selection.")
-else:
-    expected_cols = ["Phrase", "Posts", "Pain_%", "Demand_%", "Avg_Priority"]
-    missing = [c for c in expected_cols if c not in auto_df.columns]
-
-    if missing:
-        st.warning(f"Auto-keyword data missing columns: {missing}")
-        st.dataframe(auto_df)
-    else:
-        st.dataframe(auto_df[expected_cols])
-        
-        
     from collections import defaultdict
 
     phrase_data = defaultdict(list)
@@ -182,19 +165,7 @@ else:
         ])
 
     return df_out.sort_values("Posts", ascending=False)
-    
-    
-# -----------------------------
-# SAFE DISPLAY (NO KEYERROR)
-# -----------------------------
-expected_cols = ["Phrase", "Posts", "Pain_%", "Demand_%", "Avg_Priority"]
 
-missing = [c for c in expected_cols if c not in auto_df.columns]
-
-if missing:
-    st.warning(f"Auto-keyword data missing columns: {missing}")
-else:
-    st.dataframe(auto_df[expected_cols])
 
 # =========================================================
 # FETCH POSTS (WITH KEYWORD PRE-FILTER RESTORED)
