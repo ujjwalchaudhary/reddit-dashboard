@@ -233,10 +233,21 @@ with tabs[3]:
             st.dataframe(auto_df)
         else:
             st.dataframe(auto_df[expected_cols])
+import io
 
 # ---------------- EXPORT ----------------
-st.download_button(
-    "Download Excel",
-    df.to_excel(index=False),
-    file_name="reddit_intelligence.xlsx"
-)
+st.subheader("Export Data")
+
+if df is None or df.empty:
+    st.warning("No data available to export.")
+else:
+    buffer = io.BytesIO()
+    df.to_excel(buffer, index=False, engine="openpyxl")
+    buffer.seek(0)
+
+    st.download_button(
+        label="Download Excel",
+        data=buffer,
+        file_name="reddit_intelligence.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
