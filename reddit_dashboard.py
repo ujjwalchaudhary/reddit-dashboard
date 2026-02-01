@@ -149,7 +149,7 @@ def auto_keyword_discovery(df, min_count=3, phrase_lengths=(2, 3)):
             "Evidence": items[:5]  # keep few examples
         })
 
-    df = pd.DataFrame(rows)
+     df = pd.DataFrame(rows)
 
      if df.empty or "Posts" not in df.columns:
          return pd.DataFrame(columns=["Keywords","Posts"])
@@ -354,6 +354,7 @@ st.download_button(
     file_name="reddit_intelligence_export.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
+
 
 
 
