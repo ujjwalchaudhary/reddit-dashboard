@@ -103,6 +103,54 @@ def analyze_text(text: str) -> dict:
         "Insight_Priority": insight_priority
     }
 
+import re
+from collections import Counter, defaultdict
+
+STOPWORDS = set([
+    "the", "and", "for", "with", "that", "this", "from", "are",
+    "was", "were", "have", "has", "had", "you", "your", "about",
+    "anyone", "please", "thanks", "help", "using"
+])
+
+def clean_text_for_phrases(text: str):
+    text = text.lower()
+    text = re.sub(r"[^a-z0-9\s]", " ", text)
+    tokens = [t for t in text.split() if t not in STOPWORDS and len(t) > 2]
+    return tokens
+
+def extract_phrases(text, n):
+    tokens = clean_text_for_phrases(text)
+    return [" ".join(tokens[i:i+n]) for i in range(len(tokens) - n + 1)]
+
+def auto_keyword_discovery(df, min_count=3, phrase_lengths=(2, 3)):
+    phrase_data = defaultdict(list)
+
+    for _, row in df.iterrows():
+        text = f"{row['Title']} {row['Body']}"
+        for n in phrase_lengths:
+            for phrase in extract_phrases(text, n):
+                phrase_data[phrase].append(row)
+
+    rows = []
+    for phrase, items in phrase_data.items():
+        if len(items) < min_count:
+            continue
+
+        pain_pct = sum(i["Pain_Flag"] for i in items) / len(items) * 100
+        demand_pct = sum(i["Demand_Flag"] for i in items) / len(items) * 100
+        avg_priority = sum(i["Insight_Priority"] for i in items) / len(items)
+
+        rows.append({
+            "Phrase": phrase,
+            "Posts": len(items),
+            "Pain_%": round(pain_pct, 1),
+            "Demand_%": round(demand_pct, 1),
+            "Avg_Priority": round(avg_priority, 2),
+            "Evidence": items[:5]  # keep few examples
+        })
+
+    return pd.DataFrame(rows).sort_values("Posts", ascending=False)
+
 # =========================================================
 # FETCH POSTS (WITH KEYWORD PRE-FILTER RESTORED)
 # =========================================================
@@ -159,8 +207,8 @@ st.success(f"Fetched {len(df)} posts")
 # =========================================================
 # TABS
 # =========================================================
-tab_posts, tab_insights, tab_weekly, tab_analytics = st.tabs(
-    ["Posts", "Insights", "Weekly Trends", "Analytics"]
+tab_posts, tab_insights, tab_weekly, tab_analytics, tab_auto = st.tabs(
+    ["Posts", "Insights", "Weekly Trends", "Analytics", "Auto-Keyword Discovery"]
 )
 
 # =========================================================
@@ -229,6 +277,60 @@ with tab_analytics:
 
     st.dataframe(analytics, use_container_width=True)
 
+
+with tab_auto:
+    st.subheader("🧠 Auto-Keyword Discovery")
+    st.caption("Discover recurring phrases without predefined keywords")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        min_count = st.slider("Minimum occurrences", 2, 10, 3)
+    with col2:
+        phrase_type = st.selectbox(
+            "Phrase length",
+            options=["2-word", "3-word", "2 & 3-word"]
+        )
+
+    if phrase_type == "2-word":
+        phrase_lengths = (2,)
+    elif phrase_type == "3-word":
+        phrase_lengths = (3,)
+    else:
+        phrase_lengths = (2, 3)
+
+    auto_df = auto_keyword_discovery(
+        df,
+        min_count=min_count,
+        phrase_lengths=phrase_lengths
+    )
+
+    if auto_df.empty:
+        st.info("No recurring phrases found with current settings.")
+        st.stop()
+
+    st.dataframe(
+        auto_df[["Phrase", "Posts", "Pain_%", "Demand_%", "Avg_Priority"]],
+        use_container_width=True
+    )
+
+    # Evidence viewer
+    phrase_selected = st.selectbox(
+        "Inspect phrase evidence",
+        options=auto_df["Phrase"].tolist()
+    )
+
+    evidence_rows = auto_df[auto_df["Phrase"] == phrase_selected]["Evidence"].iloc[0]
+
+    st.markdown("### 🔍 Evidence Posts")
+    for r in evidence_rows:
+        st.markdown(
+            f"""
+            **r/{r['Subreddit']} | Score {r['Score']}** 
+            {r['Title']}
+            """
+        )
+
+
 # =========================================================
 # EXPORT (SAFE)
 # =========================================================
@@ -247,3 +349,4 @@ st.download_button(
     file_name="reddit_intelligence_export.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
+
