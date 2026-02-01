@@ -182,4 +182,46 @@ with tab_analytics:
     if df.empty:
         st.info("No analytics available.")
     else:
-        summary = df.groupby("Subreddit").size().reset 
+        summary = df.groupby("Subreddit").size().reset_index(name="Total_Posts")
+        st.dataframe(summary)
+
+# =============================
+# AUTO-KEYWORD TAB (SAFE)
+# =============================
+with tab_auto:
+    st.subheader("🔍 Auto-Keyword Discovery")
+
+    if auto_df is None or auto_df.empty:
+        st.warning("No auto-keywords discovered.")
+    else:
+        expected_cols = ["Phrase", "Posts", "Pain_%", "Demand_%", "Avg_Priority"]
+        safe_cols = [c for c in expected_cols if c in auto_df.columns]
+
+        if not safe_cols:
+            st.warning("Auto-keyword data incomplete.")
+            st.dataframe(auto_df)
+        else:
+            st.dataframe(auto_df[safe_cols])
+
+# =============================
+# EXPORT (SAFE EXCEL)
+# =============================
+st.markdown("---")
+st.subheader("⬇️ Export Data")
+
+if not df.empty:
+    buffer = BytesIO()
+    safe_df = df.copy()
+    safe_df = safe_df.applymap(lambda x: str(x) if isinstance(x, (list, dict)) else x)
+
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        safe_df.to_excel(writer, index=False, sheet_name="Posts")
+
+    st.download_button(
+        "Download Excel",
+        data=buffer.getvalue(),
+        file_name="reddit_data.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+else:
+    st.info("Nothing to export yet.")
